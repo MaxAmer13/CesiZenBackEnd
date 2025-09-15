@@ -17,7 +17,7 @@ namespace CesiZenBackEnd.Controllers
         }
 
         // GET: api/pageinformation
-        [HttpGet("GetAllPagE")]
+        [HttpGet("GetAllPage")]
         [AllowAnonymous]
         public async Task<IActionResult> GetAllPages()
         {

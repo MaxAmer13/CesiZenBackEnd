@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Mvc;
 using CesiZenBackEnd.Core.DTO;
 using CesiZenBackEnd.Services.Abstraction;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 namespace CesiZenBackEnd.Controllers
 {
@@ -12,31 +14,72 @@ namespace CesiZenBackEnd.Controllers
         private readonly IUserService _userService;
         private readonly ITokenService _tokenService;
 
-        public UserController(IUserService userService, ITokenService tokenService)
+        public UserController(IUserService userService, ITokenService tokenService)                                 
         {
             _userService = userService;
             _tokenService = tokenService;
         }
 
-        // Inscription
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterUserDto dto)
         {
+            if (!ModelState.IsValid)
+                return ValidationProblem(ModelState);
+
             try
             {
                 var result = await _userService.RegisterAsync(dto);
+
+                // Génération du token seulement si succès
                 result.Token = _tokenService.GenerateToken(result);
-                return Ok(result);
+                return Ok(result); // ou Created(...) si tu crées une ressource
             }
             catch (ArgumentException ex)
             {
                 return BadRequest(new { message = ex.Message });
             }
-            catch (Exception)
+            catch (DbUpdateException dbex) when (IsDuplicateEmail(dbex))
             {
-                return StatusCode(500, new { message = "Erreur interne du serveur." });
+                return Conflict(new { message = "Email déjà utilisé." });
+            }
+            catch (DbUpdateException dbex)
+            {
+                // autre erreur BDD (FK rôle inexistante, etc.)
+                return StatusCode(500, new { message = "Erreur base de données.", detail = RootMessage(dbex) });
+            }
+            catch (SecurityTokenException ste)
+            {
+                return StatusCode(500, new { message = $"Erreur JWT: {ste.Message}" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Erreur interne du serveur.", detail = ex.Message });
             }
         }
+
+        private static bool IsDuplicateEmail(DbUpdateException ex)
+        {
+            // MySQL: erreur 1062
+            var inner = ex.InnerException;
+            while (inner != null)
+            {
+                if (inner.GetType().Name.Contains("MySqlException", StringComparison.OrdinalIgnoreCase)
+                    && inner.Message.Contains("1062"))
+                    return true;
+                inner = inner.InnerException;
+            }
+            // Variante: inspecter le message pour "Duplicate entry" et le nom de l'index unique Email
+            return ex.InnerException?.Message.Contains("Duplicate entry", StringComparison.OrdinalIgnoreCase) == true
+                   && ex.InnerException.Message.Contains("Email", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string RootMessage(Exception ex)
+        {
+            while (ex.InnerException != null) ex = ex.InnerException;
+            return ex.Message;
+        }
+
+
 
         // Connexion
         [HttpPost("login")]
@@ -66,15 +109,16 @@ namespace CesiZenBackEnd.Controllers
             }
         }
         
-        // GET: api/pageinformation
-        [HttpGet("GetUser")]
+        [HttpGet("GetUser/{id}")]
         [AllowAnonymous]
-        public async Task<IActionResult> GetUserByIdAsync(int id)
+        public async Task<IActionResult> GetUserById(int id)
         {
-            var pages = await _userService.GetUserByIdAsync(id);
-            return Ok(pages);
+            var user = await _userService.GetUserById(id);
+            if (user == null)
+            {
+                return NotFound();
+            }
+            return Ok(user);
         }
     }
-    
-    
 }

@@ -2,8 +2,8 @@
 
 public class JwtSettings
 {
-    public string SecretKey { get; set; } = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6...\n";
+    public string SecretKey { get; set; } = "";
     public int ExpirationMinutes { get; set; }
-    public string Issuer { get; set; } = "CesiZenApp";
-    public string Audience { get; set; } = "CesiZenUser";
+    public string Issuer { get; set; } = "";
+    public string Audience { get; set; } = "";
 }

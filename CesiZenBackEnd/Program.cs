@@ -116,6 +116,7 @@ var app = builder.Build();
 // Active Swagger uniquement en dev
 if (app.Environment.IsDevelopment())
 {
+    app.UseDeveloperExceptionPage();
     app.UseSwagger();
     app.UseSwaggerUI();
 }

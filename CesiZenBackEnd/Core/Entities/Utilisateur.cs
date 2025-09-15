@@ -36,4 +36,5 @@ public partial class Utilisateur : Entity<int>
     
     public Role Role { get; set; }  // navigation property
     public IEnumerable<Diagnostic>? Diagnostics { get; set; }
+    public string? Adresse { get; set; }
 }

@@ -20,14 +20,31 @@ public class TokenService : ITokenService
         _settings = settings.Value;
     }
 
-    public string GenerateToken( LoginResultDto loginResultDto)
+    public string GenerateToken(LoginResultDto dto)
     {
-        var claims = new[]
+        if (dto is null) throw new ArgumentNullException(nameof(dto));
+        if (string.IsNullOrWhiteSpace(_settings?.SecretKey))
+            throw new SecurityTokenException("JWT secret key is missing");
+        if (string.IsNullOrWhiteSpace(_settings?.Issuer))
+            throw new SecurityTokenException("JWT issuer is missing");
+        if (string.IsNullOrWhiteSpace(_settings?.Audience))
+            throw new SecurityTokenException("JWT audience is missing");
+
+        var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.NameIdentifier, loginResultDto.Id.ToString()),
-            new Claim(ClaimTypes.Email, loginResultDto.Email),
-            new Claim(ClaimTypes.Role, loginResultDto.LibelRole!)
+            new Claim(ClaimTypes.NameIdentifier, dto.Id.ToString()),
+            new Claim(ClaimTypes.Email, dto.Email)
         };
+
+        if (!string.IsNullOrWhiteSpace(dto.LibelRole))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, dto.LibelRole));
+        }
+        else if (dto.RoleId.HasValue)
+        {
+            // facultatif: fallback sur l'id numérique
+            claims.Add(new Claim(ClaimTypes.Role, dto.RoleId.Value.ToString()));
+        }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.SecretKey));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -42,4 +59,6 @@ public class TokenService : ITokenService
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+
 }

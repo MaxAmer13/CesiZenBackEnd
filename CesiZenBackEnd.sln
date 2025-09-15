@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiZenBackEnd", "CesiZenBackEnd\CesiZenBackEnd.csproj", "{51EE29FE-59FA-4E1F-A04F-2C8BBAE3DFEA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CesiZenBackEndTests", "CesiZenBackEndTests\CesiZenBackEndTests.csproj", "{B6B62D81-910B-41EA-809A-267D69C0A735}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{51EE29FE-59FA-4E1F-A04F-2C8BBAE3DFEA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{51EE29FE-59FA-4E1F-A04F-2C8BBAE3DFEA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{51EE29FE-59FA-4E1F-A04F-2C8BBAE3DFEA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B6B62D81-910B-41EA-809A-267D69C0A735}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6B62D81-910B-41EA-809A-267D69C0A735}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B6B62D81-910B-41EA-809A-267D69C0A735}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B6B62D81-910B-41EA-809A-267D69C0A735}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

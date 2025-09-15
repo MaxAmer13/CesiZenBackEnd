@@ -17,12 +17,12 @@ namespace CesiZenBackEnd.Services;
 public class UserService : IUserService
 {
     private readonly IUserRepository _userRepository;
-    private readonly IConfiguration _configuration;
+    private readonly IUnitOfWork _unitOfWork;
 
-    public UserService(IUserRepository userRepository, IConfiguration configuration)
+    public UserService(IUserRepository userRepository, IUnitOfWork unitOfWork)
     {
         _userRepository = userRepository;
-        _configuration = configuration;
+        _unitOfWork = unitOfWork;
     }
 
     public async Task<LoginResultDto> RegisterAsync(RegisterUserDto dto)
@@ -36,7 +36,8 @@ public class UserService : IUserService
             Email = dto.Email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             Prenom = dto.Prenom,
-            Nom = dto.Nom
+            Nom = dto.Nom,
+            RoleId = dto.RoleId.Value // <= IMPORTANT
         };
 
         await _userRepository.AddAsync(newUser);
@@ -48,14 +49,28 @@ public class UserService : IUserService
             Id = newUser.Id,
             Email = newUser.Email,
             Prenom = newUser.Prenom,
-            Nom = newUser.Nom
+            Nom = newUser.Nom,
         };
     }
 
-    public Task<LoginResultDto?> GetUserByIdAsync(int userId)
+    public async Task<UserBasicDto?> GetUserById(int userId)
     {
-        throw new NotImplementedException();
+        var user = await _unitOfWork.Users.GetUserById(userId);
+        if (user == null) return null;
+
+        return new UserBasicDto()
+        {
+            Id = user.Id,
+            Nom = user.Nom,
+            Prenom = user.Prenom,
+            Email = user.Email,
+            Adresse = user.Adresse,
+            EstActifUtil = user.Active,
+            DateCreation = user.DateCreation,
+            IdRole = user.RoleId
+        };
     }
+
 
 
     public async Task<LoginResultDto> LoginAsync(LoginUserDto dto)

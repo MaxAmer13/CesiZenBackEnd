@@ -11,6 +11,11 @@ public class UserRepository : IUserRepository
     {
         _context = context;
     }
+    
+    public async Task<Utilisateur?> GetUserById(int id)
+    {
+        return await _context.Utilisateurs.FirstOrDefaultAsync(u => u.Id == id);
+    }
 
     public async Task<Utilisateur?> GetByEmailAsync(string email)
     {
@@ -26,4 +31,6 @@ public class UserRepository : IUserRepository
     {
         await _context.SaveChangesAsync();
     }
+    
+    
 }
