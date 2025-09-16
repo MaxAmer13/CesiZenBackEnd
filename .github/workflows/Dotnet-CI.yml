@@ -9,7 +9,7 @@ permissions:
 
 env:
   DOTNET_VERSION: '8.0'         # change si tu veux .NET 7.0 ou 6.0
-  SOLUTION_FILE: './MySolution.sln'  # <-- adapte : chemin vers ta solution .sln ou projet .csproj
+  SOLUTION_FILE: './CesiZenBackEnd.sln'  # <-- adapte : chemin vers ta solution .sln ou projet .csproj
   PUBLISH_OUTPUT: 'publish'    # dossier relatif généré par dotnet publish
   ARTIFACT_NAME: 'dotnet-backend'
 
