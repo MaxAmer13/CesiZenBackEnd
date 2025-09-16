@@ -7,16 +7,18 @@ on:
     branches: [ "develop", "master", "main" ]
 
 env:
-  DOTNET_VERSION: '8.0.x'                # adapte si besoin
-  SOLUTION_FILE: './CesiZenBackEnd.sln'      # <-- modifie ceci
-  TEST_PROJECT: './CesiZenBackEnd/CesiZenBackEndTests.csproj'   # <-- modifie ou vide si tu veux tester toute la solution
-  PUBLISH_PROJECT: './CesiZenBackEnd/CesiZenBackEnd.csproj'             # <-- modifie
+  DOTNET_VERSION: '8.0.x'
+  SOLUTION_FILE: './CesiZenBackEnd.sln'
+  TEST_PROJECT: './CesiZenBackEnd/CesiZenBackEndTests.csproj'
+  PUBLISH_PROJECT: './CesiZenBackEnd/CesiZenBackEnd.csproj'
   BUILD_CONFIGURATION: 'Release'
   MYSQL_DATABASE: 'cesizen_db'
   MYSQL_USER: 'root'
-  MYSQL_PASSWORD: ''
-  MYSQL_ROOT_PASSWORD: ''
-  DATABASE_URL: "server=127.0.0.1;database=cesizen_db;user=root;password=;"  # utilisé éventuellement
+  # Par sécurité tu peux remplacer ces valeurs par des secrets GitHub (recommandé pour prod)
+  MYSQL_PASSWORD: 'root'
+  MYSQL_ROOT_PASSWORD: 'root'
+  # Dans GitHub Actions les services MySQL sont généralement accessibles sur 127.0.0.1:3306
+  DATABASE_URL: "Server=127.0.0.1;Port=3306;Database=cesizen_db;Uid=root;Pwd=root;"
   IMAGE_NAME: 'myorg/my-backend'
   IMAGE_TAG: ${{ github.sha }}
 
@@ -54,7 +56,6 @@ jobs:
       - name: Install/restore dotnet-format (optional)
         shell: bash
         run: |
-          # recommandation : ajouter .config/dotnet-tools.json in repo and use dotnet tool restore
           if [ -f ".config/dotnet-tools.json" ]; then
             dotnet tool restore
           else
@@ -78,7 +79,7 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h localhost -p${{ env.MYSQL_ROOT_PASSWORD }}" 
+          --health-cmd="mysqladmin ping -h localhost -p$MYSQL_ROOT_PASSWORD"
           --health-interval=5s --health-timeout=5s --health-retries=30
 
     steps:
@@ -92,10 +93,12 @@ jobs:
 
       - name: Wait for MySQL to be ready
         shell: bash
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ env.MYSQL_ROOT_PASSWORD }}
         run: |
-          # Wait for the MySQL docker service to be ready (max ~60s)
+          echo "Waiting for MySQL to be ready..."
           for i in $(seq 1 30); do
-            if docker run --rm --network host mysql:8.0 mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -p${{ env.MYSQL_ROOT_PASSWORD }} >/dev/null 2>&1; then
+            if mysqladmin ping -h 127.0.0.1 -P 3306 -uroot -p"$MYSQL_ROOT_PASSWORD" >/dev/null 2>&1; then
               echo "MySQL is up"
               break
             fi
@@ -105,51 +108,28 @@ jobs:
 
       - name: Create test databases and user
         shell: bash
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ env.MYSQL_ROOT_PASSWORD }}
+          MYSQL_USER: ${{ env.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ env.MYSQL_PASSWORD }}
+          MYSQL_DATABASE: ${{ env.MYSQL_DATABASE }}
         run: |
-          # Using mysql client from apt-get for host runner; install if missing
           apt-get update -y
           apt-get install -y default-mysql-client
-          mysql -h 127.0.0.1 -P 3306 -uroot -p${{ env.MYSQL_ROOT_PASSWORD }} -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE}_test; CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE}_test_test;"
-          mysql -h 127.0.0.1 -P 3306 -uroot -p${{ env.MYSQL_ROOT_PASSWORD }} -e "CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED BY '${MYSQL_PASSWORD}'; GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}_test.* TO '${MYSQL_USER}'@'%'; GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}_test_test.* TO '${MYSQL_USER}'@'%'; FLUSH PRIVILEGES;"
+          mysql -h 127.0.0.1 -P 3306 -uroot -p"$MYSQL_ROOT_PASSWORD" -e "CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE}_test; CREATE DATABASE IF NOT EXISTS ${MYSQL_DATABASE}_test_test;"
+          mysql -h 127.0.0.1 -P 3306 -uroot -p"$MYSQL_ROOT_PASSWORD" -e "CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED BY '${MYSQL_PASSWORD}'; GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}_test.* TO '${MYSQL_USER}'@'%'; GRANT ALL PRIVILEGES ON ${MYSQL_DATABASE}_test_test.* TO '${MYSQL_USER}'@'%'; FLUSH PRIVILEGES;"
 
-      - name: Restore (tests)
-        run: |
-          if [ -n "${{ env.SOLUTION_FILE }}" ]; then
-            dotnet restore "${{ env.SOLUTION_FILE }}"
-          elif [ -n "${{ env.TEST_PROJECT }}" ]; then
-            dotnet restore "${{ env.TEST_PROJECT }}"
-          else
-            echo "No project specified to restore"
-          fi
-
-      - name: Run EF migrations / create DB (if you use EF Core)
+      - name: Run unit tests
         shell: bash
         run: |
-          # Si tu utilises EF Core et des migrations dans le projet API :
-          # dotnet ef database update --project path/to/Your.DataProject.csproj --startup-project path/to/Your.Api.csproj --context YourDbContext --no-build --verbose
-          # Si tu n'utilises pas EF, adapte cette étape (DDL via scripts ou commande custom).
-          echo "Adapt / enable EF Core migrations step if needed. Skipping by default."
-
-      - name: Run tests
-        shell: bash
-        run: |
-          if [ -n "${{ env.TEST_PROJECT }}" ]; then
-            dotnet test "${{ env.TEST_PROJECT }}" --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --logger "trx;LogFileName=test-results.trx"
-          elif [ -n "${{ env.SOLUTION_FILE }}" ]; then
-            dotnet test "${{ env.SOLUTION_FILE }}" --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --logger "trx;LogFileName=test-results.trx"
+          if [ -n "${{ env.TEST_PROJECT }}" ] && [ -f "${{ env.TEST_PROJECT }}" ]; then
+            dotnet test "${{ env.TEST_PROJECT }}" --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore --verbosity minimal
           else
-            echo "No tests configured"
+            dotnet test "${{ env.SOLUTION_FILE }}" --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore --verbosity minimal
           fi
 
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: '**/TestResults/*.trx'
-          retention-days: 7
-
-  security:
-    name: Security scan (package vulnerabilities)
+  sec:
+    name: Security scans (optional)
     runs-on: ubuntu-latest
     needs: test
     steps:
@@ -161,34 +141,14 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore
+      - name: Run dotnet list package --vulnerable (example)
         run: |
-          if [ -n "${{ env.SOLUTION_FILE }}" ]; then
-            dotnet restore "${{ env.SOLUTION_FILE }}"
-          fi
-
-      - name: List vulnerable packages (human + JSON)
-        run: |
-          # dotnet >= 6 supports --vulnerable
-          if [ -n "${{ env.SOLUTION_FILE }}" ]; then
-            dotnet list "${{ env.SOLUTION_FILE }}" package --vulnerable || true
-            dotnet list "${{ env.SOLUTION_FILE }}" package --vulnerable --format json > dotnet-vuln-report.json || true
-            ls -lah dotnet-vuln-report.json || true
-          else
-            echo "No solution specified for vulnerability scan"
-          fi
-
-      - name: Upload vulnerability report
-        uses: actions/upload-artifact@v4
-        with:
-          name: dotnet-vulnerabilities
-          path: dotnet-vuln-report.json
-          retention-days: 7
+          dotnet list "${{ env.SOLUTION_FILE }}" package --vulnerable || true
 
   build:
     name: Build and Publish
     runs-on: ubuntu-latest
-    needs: security
+    needs: sec
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -206,21 +166,12 @@ jobs:
 
       - name: Build
         run: |
-          if [ -n "${{ env.SOLUTION_FILE }}" ]; then
-            dotnet build "${{ env.SOLUTION_FILE }}" --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
-          elif [ -n "${{ env.PUBLISH_PROJECT }}" ]; then
-            dotnet build "${{ env.PUBLISH_PROJECT }}" --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
-          fi
+          dotnet build "${{ env.SOLUTION_FILE }}" --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore
 
       - name: Publish
         run: |
-          mkdir -p ./publish
-          if [ -n "${{ env.PUBLISH_PROJECT }}" ]; then
-            dotnet publish "${{ env.PUBLISH_PROJECT }}" --configuration ${{ env.BUILD_CONFIGURATION }} --output ./publish --no-build
-          elif [ -n "${{ env.SOLUTION_FILE }}" ]; then
-            # fallback: try to publish first project found (not recommended)
-            echo "No PUBLISH_PROJECT set; please set PUBLISH_PROJECT to a .csproj to publish a specific project."
-          fi
+          mkdir -p publish
+          dotnet publish "${{ env.PUBLISH_PROJECT }}" -c ${{ env.BUILD_CONFIGURATION }} -o ./publish --no-restore
 
       - name: Upload publish artifact
         uses: actions/upload-artifact@v4
@@ -252,7 +203,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Login to registry (optional)
-        if: ${{ secrets.DOCKER_REGISTRY && secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
+        if: ${{ secrets.DOCKER_REGISTRY != '' && secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
         uses: docker/login-action@v2
         with:
           registry: ${{ secrets.DOCKER_REGISTRY }}
@@ -261,23 +212,23 @@ jobs:
 
       - name: Build Docker image (optional)
         run: |
-          # If you have a Dockerfile in repo it will be used. Otherwise we create a minimal one.
+          # If you have a Dockerfile in repo it will be used. Otherwise create a minimal one.
           if [ ! -f Dockerfile ]; then
             cat > Dockerfile <<'DOCKER'
-            FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
-            WORKDIR /app
-            COPY publish/ .
-            ENTRYPOINT ["dotnet", "MyApi.dll"]
-            DOCKER
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+WORKDIR /app
+COPY publish/ .
+ENTRYPOINT ["dotnet", "CesiZenBackEnd.dll"]
+DOCKER
           fi
-          # prepare context
+
           rm -rf docker-context || true
           mkdir -p docker-context
           cp -r ./publish_artifact/* docker-context/publish
           docker build -t ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} docker-context
 
       - name: Push Docker image (optional)
-        if: ${{ secrets.DOCKER_REGISTRY && secrets.DOCKER_USERNAME && secrets.DOCKER_PASSWORD }}
+        if: ${{ secrets.DOCKER_REGISTRY != '' && secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
         run: |
           REG=${{ secrets.DOCKER_REGISTRY }}
           IMAGE=${{ env.IMAGE_NAME }}
@@ -290,12 +241,11 @@ jobs:
         if: ${{ env.DEPLOY_VIA_COMPOSE == 'true' }}
         run: |
           # NOTE: to run docker-compose on the runner you need a self-hosted runner with Docker installed.
-          # Compose file expected as compose.yaml in repo or modify path.
           docker compose -f compose.yaml pull || true
           docker compose -f compose.yaml up -d --build
 
       - name: (Optional) SSH deploy to remote host
-        if: ${{ secrets.SSH_HOST && secrets.SSH_USER && secrets.SSH_KEY }}
+        if: ${{ secrets.SSH_HOST != '' && secrets.SSH_USER != '' && secrets.SSH_KEY != '' }}
         uses: appleboy/ssh-action@v0.1.8
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -305,6 +255,4 @@ jobs:
             set -euo pipefail
             mkdir -p /home/${{ secrets.SSH_USER }}/deploy
             rsync -avz --delete ./publish_artifact/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/home/${{ secrets.SSH_USER }}/deploy/
-            # Exemple: lancer docker-compose remote
             ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /home/${{ secrets.SSH_USER }}/deploy && docker compose pull && docker compose up -d --build"
-
