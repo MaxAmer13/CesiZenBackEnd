@@ -1,0 +1,174 @@
+on:
+  push:
+    branches: [ "master", "develop" ]
+  pull_request:
+    branches: [ "master", "develop" ]
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '8.0'         # change si tu veux .NET 7.0 ou 6.0
+  SOLUTION_FILE: './MySolution.sln'  # <-- adapte : chemin vers ta solution .sln ou projet .csproj
+  PUBLISH_OUTPUT: 'publish'    # dossier relatif généré par dotnet publish
+  ARTIFACT_NAME: 'dotnet-backend'
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      dotnet_version: ${{ steps.dotnet.outputs.dotnet-version }}
+      has_dotnet_format: ${{ steps.check_format.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: dotnet
+        name: Setup .NET SDK
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Show dotnet version
+        id: show
+        run: |
+          dotnet --info
+          echo "dotnet-version=$(dotnet --version)" >> "$GITHUB_OUTPUT"
+      - id: check_format
+        name: Check if dotnet-format is declared in local tools manifest
+        shell: bash
+        run: |
+          EXISTS=false
+          if [ -f ".config/dotnet-tools.json" ]; then
+            if grep -q '"dotnet-format"' .config/dotnet-tools.json; then
+              EXISTS=true
+            fi
+          fi
+          if command -v dotnet-format >/dev/null 2>&1; then
+            EXISTS=true
+          fi
+          echo "exists=$EXISTS" >> "$GITHUB_OUTPUT"
+          echo "dotnet-format present: $EXISTS"
+
+  format:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet_version }}
+
+      - name: Install dotnet-format (if not present)
+        if: needs.setup.outputs.has_dotnet_format != 'true'
+        run: |
+          echo "dotnet-format not detected via manifest or PATH. Installing as global tool (local) for CI run..."
+          dotnet tool install --global dotnet-format || true
+          export PATH="$HOME/.dotnet/tools:$PATH"
+      - name: Run dotnet-format
+        if: needs.setup.outputs.has_dotnet_format == 'true' || always()
+        env:
+          PATH: ${{ runner.temp }}/.dotnet/tools:$HOME/.dotnet/tools:$PATH
+        run: |
+          set -e
+          echo "Running dotnet format (check only)..."
+          dotnet-format --verify-no-changes --verbosity minimal || \
+            (echo "Code is not formatted. Run 'dotnet format' locally to fix." && exit 1)
+
+  restore-and-build:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet_version }}
+
+      - name: Restore NuGet packages
+        run: dotnet restore ${{ env.SOLUTION_FILE }}
+
+      - name: Build solution
+        run: dotnet build ${{ env.SOLUTION_FILE }} --configuration Release --no-restore
+
+  test:
+    needs: [restore-and-build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet_version }}
+
+      - name: Restore
+        run: dotnet restore ${{ env.SOLUTION_FILE }}
+
+      - name: Run unit tests
+        env:
+          CI: true
+        run: |
+          dotnet test ${{ env.SOLUTION_FILE }} --configuration Release --no-build --logger "trx;LogFileName=test_results.trx" || true
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+          if-no-files-found: warn
+          retention-days: 7
+
+  publish:
+    needs: [test, restore-and-build, format]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet_version }}
+
+      - name: Restore
+        run: dotnet restore ${{ env.SOLUTION_FILE }}
+
+      - name: Publish app
+        run: |
+          dotnet publish ${{ env.SOLUTION_FILE }} -c Release -o ${{ env.PUBLISH_OUTPUT }} --no-restore
+
+      - name: Upload publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.PUBLISH_OUTPUT }}
+          if-no-files-found: error
+          retention-days: 7
+
+  security:
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ needs.setup.outputs.dotnet_version }}
+
+      - name: Restore packages for security scan
+        run: dotnet restore ${{ env.SOLUTION_FILE }}
+
+      - name: List packages with known vulnerabilities
+        run: |
+          echo "Looking for vulnerable packages..."
+          dotnet list ${{ env.SOLUTION_FILE }} package --vulnerable || true
+
+      - name: Create dependency scan artifact
+        run: |
+          dotnet list ${{ env.SOLUTION_FILE }} package --vulnerable > dotnet-vuln.txt || true
+      - name: Upload vulnerability report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-vulnerabilities
+          path: dotnet-vuln.txt
+          retention-days: 7
