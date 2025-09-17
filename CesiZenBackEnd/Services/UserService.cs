@@ -37,7 +37,11 @@ public class UserService : IUserService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             Prenom = dto.Prenom,
             Nom = dto.Nom,
+<<<<<<< Updated upstream
             RoleId = dto.RoleId.Value // <= IMPORTANT
+=======
+            RoleId = dto.RoleId,
+>>>>>>> Stashed changes
         };
 
         await _userRepository.AddAsync(newUser);

@@ -31,10 +31,14 @@ public partial class Utilisateur : Entity<int>
     public DateTime DateCreation { get; set; } = DateTime.UtcNow;
 
     [Column("id_role")]
-    public int RoleId { get; set; } // anciennement IdRole
+    public int? RoleId { get; set; } // anciennement IdRole
     
     
     public Role Role { get; set; }  // navigation property
     public IEnumerable<Diagnostic>? Diagnostics { get; set; }
+<<<<<<< Updated upstream
     public string? Adresse { get; set; }
+=======
+    public bool estActifUtil { get; set; }
+>>>>>>> Stashed changes
 }
